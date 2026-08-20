@@ -28,6 +28,7 @@ Codex 先载入 Skill 规则，把用户描述整理成 JSON 流程规格；规�
 ```text
 show-me-sequence/
 ├── SKILL.md
+├── LICENSE
 ├── agents/openai.yaml
 ├── scripts/
 │   ├── render_sequence.py
@@ -40,6 +41,7 @@ show-me-sequence/
 ```
 
 - `SKILL.md`：Skill 的入口，告诉 Codex 何时启用以及如何建模、校验、渲染和检查图片。
+- `LICENSE`：MIT 开源协议，允许自由使用、修改和分发。
 - `agents/openai.yaml`：Codex 界面中显示的名称、简介和默认调用提示。
 - `scripts/render_sequence.py`：核心程序，校验 JSON，并生成 SVG 或高清 PNG。
 - `scripts/test_render_sequence.py`：回归测试，防止箭头、文字位置和布局在修改后失效。
@@ -75,3 +77,7 @@ python3 scripts/render_sequence.py input.json output.svg --preset web
 ```
 
 完整字段说明见 [references/specification.md](references/specification.md)。
+
+## 开源协议
+
+本项目采用 [MIT License](LICENSE)。你可以自由使用、修改和分发，但需要保留原始版权与许可声明。
