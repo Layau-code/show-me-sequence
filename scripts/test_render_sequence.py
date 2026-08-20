@@ -206,6 +206,84 @@ class RendererTests(unittest.TestCase):
         self.assertGreater(len(lines), 1)
         self.assertTrue(all(renderer.display_width(line) <= 10 for line in lines))
 
+    def test_business_message_wraps_without_ellipsis_or_information_loss(self) -> None:
+        label = "复用同一个会话级沙箱并继续执行下一轮文件处理任务，同时保留已有上下文和生成文件供后续步骤使用"
+        spec = minimal_spec([{"from": "a", "to": "b", "label": label}])
+        spec["layout"] = {"participant_spacing": 120, "min_width": 640}
+        svg, _, _ = renderer.render(spec)
+        root = ET.fromstring(svg)
+        rendered_text = "".join(root.itertext())
+        self.assertIn(label, rendered_text)
+        self.assertNotIn("…", rendered_text)
+
+    def test_long_participant_names_wrap_without_ellipsis(self) -> None:
+        spec = minimal_spec()
+        spec["participants"][1] = {
+            "id": "b",
+            "label": "会话级沙箱提供服务",
+            "subtitle": "SessionSandboxProvider",
+        }
+        svg, _, _ = renderer.render(spec)
+        root = ET.fromstring(svg)
+        rendered_text = "".join(root.itertext())
+        self.assertIn("会话级沙箱提供服务", rendered_text)
+        self.assertIn("SessionSandboxProvider", rendered_text)
+        self.assertNotIn("…", rendered_text)
+
+    def test_readability_budget_rejects_overloaded_single_diagram(self) -> None:
+        events = [
+            {"from": "a", "to": "b", "label": f"Step {index}"}
+            for index in range(1, 30)
+        ]
+        with self.assertRaisesRegex(renderer.SpecError, "readability budget.*split"):
+            renderer.validate(minimal_spec(events))
+
+    def test_allow_tall_explicitly_bypasses_readability_budget(self) -> None:
+        events = [
+            {"from": "a", "to": "b", "label": f"Step {index}"}
+            for index in range(1, 30)
+        ]
+        spec = minimal_spec(events)
+        spec["layout"] = {"allow_tall": True}
+        renderer.validate(spec)
+
+    def test_state_is_clear_of_arrow_when_method_is_absent(self) -> None:
+        spec = minimal_spec([{
+            "id": "m1", "from": "a", "to": "b", "label": "Done",
+            "kind": "return", "state": "COMPLETED",
+        }])
+        svg, _, _ = renderer.render(spec)
+        root = ET.fromstring(svg)
+        arrow = next(element for element in root.iter() if element.get("data-role") == "step-arrow")
+        state = next(
+            element for element in root.iter()
+            if element.tag.endswith("text") and "".join(element.itertext()) == "COMPLETED"
+        )
+        self.assertGreaterEqual(float(state.get("y", "0")) - float(arrow.get("y1", "0")), 18)
+
+    def test_core_method_does_not_orphan_closing_parenthesis(self) -> None:
+        spec = minimal_spec([{
+            "from": "a", "to": "b", "label": "提交电子处方",
+            "method": "PrescriptionService.submit()",
+        }])
+        svg, _, _ = renderer.render(spec)
+        root = ET.fromstring(svg)
+        method = next(
+            element for element in root.iter()
+            if element.tag.endswith("text") and "".join(element.itertext()) == "PrescriptionService.submit()"
+        )
+        self.assertEqual(len([child for child in method if child.tag.endswith("tspan")]), 1)
+
+    def test_phase_card_has_separate_number_and_name_hierarchy(self) -> None:
+        spec = minimal_spec()
+        spec["phases"][0]["label"] = "阶段1 首次运行"
+        svg, _, _ = renderer.render(spec)
+        root = ET.fromstring(svg)
+        phase_number = next(element for element in root.iter() if element.get("data-role") == "phase-number")
+        phase_name = next(element for element in root.iter() if element.get("data-role") == "phase-name")
+        self.assertEqual("".join(phase_number.itertext()), "阶段1")
+        self.assertEqual("".join(phase_name.itertext()), "首次运行")
+
     def test_presentation_preset_is_larger(self) -> None:
         _, web_width, _ = renderer.render(minimal_spec(), "web")
         _, presentation_width, _ = renderer.render(minimal_spec(), "presentation")

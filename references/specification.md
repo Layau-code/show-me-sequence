@@ -177,6 +177,14 @@ Optional overrides:
 - `font_size`: `11`–`22`.
 - `min_width`: `640`–`10000`.
 - `show_bottom_participants`: boolean.
+- `allow_tall`: boolean. Defaults to `false`. Set to `true` only when the user explicitly requires one audit-style diagram instead of a readable overview and focused details.
+
+The default readability budget is 28 messages per diagram and 14 messages per phase, including messages nested in fragments. When either limit is exceeded, split the source into:
+
+1. One overview diagram showing the end-to-end business path.
+2. Focused detail diagrams for dense phases, exception paths, or bounded contexts.
+
+Do not abbreviate business actions or participant names with an ellipsis to force them into one canvas. The renderer wraps them completely and expands row or card height as needed.
 
 ## Validation and repair
 
@@ -189,4 +197,4 @@ If labels collide:
 3. Split the scenario or bounded context.
 4. Reduce font size only as a last resort; never below 11.
 
-If a diagram is too tall, remove redundant acknowledgements or split happy and exception paths. Do not flatten genuine alternatives or parallel behavior into a false linear sequence.
+If a diagram is too tall, remove redundant acknowledgements or split happy and exception paths. Do not flatten genuine alternatives or parallel behavior into a false linear sequence. Use `layout.allow_tall: true` only for an explicitly requested single audit diagram.

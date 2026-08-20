@@ -12,23 +12,24 @@ Create a business-readable sequence diagram with deterministic layout. Keep sema
 1. Extract participants, causal events, phases, conditions, states, notes, and any genuinely useful execution spans. Do not invent missing behavior.
 2. Order participants from initiator to downstream dependencies. Prefer 4–9 participants; merge lifelines that add no business meaning.
 3. Group the flow into 2–6 outcome-oriented phases.
-4. Write every business-visible label in the user's language. For a Chinese request or title, write Chinese action phrases such as `创建远程沙箱`; never use a bare method or term such as `Sandbox.create` as the main label.
-5. Put only the exact core method name in optional `method`, for example `{"label":"创建远程沙箱","method":"Sandbox.create(scope)"}`. Omit `method` when the step has no real implementation method. Do not put field names, event names, protocols, parameters lists, return values, or explanatory sentences there.
-6. Model nonlinear behavior explicitly:
+4. Keep the primary diagram within a readability budget: at most 28 messages total and at most 14 messages in one phase. If the source is larger, create one overview diagram plus focused detail diagrams by scenario, exception path, or bounded context. Use `layout.allow_tall: true` only when the user explicitly requires one audit-style diagram.
+5. Write every business-visible label in the user's language. For a Chinese request or title, write Chinese action phrases such as `创建远程沙箱`; never use a bare method or term such as `Sandbox.create` as the main label. Preserve the complete meaning: wrap long text instead of truncating it with `…`.
+6. Put only the exact core method name in optional `method`, for example `{"label":"创建远程沙箱","method":"Sandbox.create(scope)"}`. Omit `method` when the step has no real implementation method. Do not put field names, event names, protocols, parameters lists, return values, or explanatory sentences there.
+7. Model nonlinear behavior explicitly:
    - Use `alt` for mutually exclusive outcomes.
    - Use `opt` for optional behavior.
    - Use `loop` for retry or repetition.
    - Use `par` for concurrent branches.
    - Use `break` for an early termination or exceptional exit.
-7. Omit activations by default. Add one only when a short synchronous execution span materially helps the reader; never use an activation to show object lifetime, resource existence, ownership, or an entire request lifecycle.
-8. Create a JSON specification. Read [references/specification.md](references/specification.md) for the complete model. Start from [assets/example-sequence.json](assets/example-sequence.json) when useful.
-9. Validate before rendering:
+8. Omit activations by default. Add one only when a short synchronous execution span materially helps the reader; never use an activation to show object lifetime, resource existence, ownership, or an entire request lifecycle.
+9. Create a JSON specification. Read [references/specification.md](references/specification.md) for the complete model. Start from [assets/example-sequence.json](assets/example-sequence.json) when useful.
+10. Validate before rendering:
 
    ```bash
    python3 scripts/render_sequence.py input.json --check
    ```
 
-10. Render editable SVG, selecting a target preset when appropriate:
+11. Render editable SVG, selecting a target preset when appropriate:
 
    ```bash
    python3 scripts/render_sequence.py input.json output.svg --preset web
@@ -36,7 +37,7 @@ Create a business-readable sequence diagram with deterministic layout. Keep sema
 
    Available presets are `web`, `presentation`, and `document`.
 
-11. Render PNG only when the user or target medium needs raster output:
+12. Render PNG only when the user or target medium needs raster output:
 
    ```bash
    python3 scripts/render_sequence.py input.json output.png --scale 2 --keep-svg
@@ -44,8 +45,8 @@ Create a business-readable sequence diagram with deterministic layout. Keep sema
 
    SVG remains the source of truth. PNG conversion auto-detects macOS `sips`, Chrome/Chromium, `rsvg-convert`, ImageMagick, or CairoSVG.
 
-12. Inspect the artifact at normal zoom as a business reader. Verify that every message step has a visible arrowhead pointing from sender to receiver, every numbered step explains what happens without requiring code knowledge, method names appear only as secondary text below the action, activations are short and meaningful, and branches, states, clipping, and phase ownership are correct. Fix JSON or layout settings, not generated SVG markup.
-13. Deliver SVG and JSON. Include PNG only when requested or needed for embedding.
+13. Inspect the artifact at normal zoom as a business reader. Verify that every message step has a visible arrowhead pointing from sender to receiver, every numbered step explains what happens without requiring code knowledge, method names appear only as secondary text below the action, no business label or participant name is replaced with an ellipsis, activations are short and meaningful, and branches, states, clipping, and phase ownership are correct. Fix JSON or layout settings, not generated SVG markup.
+14. Deliver SVG and JSON. When a flow was split, deliver the overview and every detail diagram together. Include PNG only when requested or needed for embedding.
 
 ## Modeling Rules
 
@@ -63,7 +64,7 @@ Create a business-readable sequence diagram with deterministic layout. Keep sema
 - Number business-visible messages. Use explicit numbers such as `12a` and `12b` across alternative branches. Set `number: false` for support signals that would add noise.
 - Put state and abbreviation definitions in the legend.
 - Use participant `subtitle` for implementation identifiers while keeping participant `label` business-facing.
-- Split diagrams beyond about 45 messages or 10 participants by scenario or bounded context.
+- Split diagrams beyond 28 messages total, 14 messages in one phase, or 10 participants. Produce an overview plus focused detail diagrams instead of squeezing the entire workflow into one tall canvas.
 
 ## Visual Standard
 

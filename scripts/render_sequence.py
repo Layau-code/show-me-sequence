@@ -26,6 +26,8 @@ EVENT_KINDS = MESSAGE_KINDS | {"note", "fragment"}
 FRAGMENT_OPERATORS = {"alt", "opt", "loop", "par", "break"}
 EMPHASIS_VALUES = {"state", "error", "warning"}
 MAX_ACTIVATION_MESSAGE_SPAN = 6
+MAX_MESSAGES_PER_DIAGRAM = 28
+MAX_MESSAGES_PER_PHASE = 14
 HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 CJK_TEXT = re.compile(r"[\u3400-\u4DBF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]")
 CORE_METHOD = re.compile(
@@ -33,18 +35,19 @@ CORE_METHOD = re.compile(
     r"(?:(?:\.|::|/|#)[A-Za-z_$][A-Za-z0-9_$-]*)*"
     r"(?:\([^()\n]{0,80}\))?$"
 )
+PHASE_PREFIX = re.compile(r"^\s*((?:阶段\s*\d+)|(?:Phase\s*\d+))\s*(?:[-—:：·]\s*)?(.*)$", re.IGNORECASE)
 PRESETS = {
     "web": {
-        "participant_spacing": 176, "participant_width": 138, "phase_rail_width": 108,
-        "row_height": 62, "font_size": 13, "min_width": 900,
+        "participant_spacing": 176, "participant_width": 146, "phase_rail_width": 132,
+        "row_height": 56, "font_size": 13.5, "min_width": 900,
     },
     "presentation": {
-        "participant_spacing": 196, "participant_width": 150, "phase_rail_width": 112,
-        "row_height": 68, "font_size": 14, "min_width": 1500,
+        "participant_spacing": 196, "participant_width": 158, "phase_rail_width": 140,
+        "row_height": 60, "font_size": 14.5, "min_width": 1500,
     },
     "document": {
-        "participant_spacing": 164, "participant_width": 132, "phase_rail_width": 104,
-        "row_height": 58, "font_size": 12, "min_width": 1040,
+        "participant_spacing": 164, "participant_width": 140, "phase_rail_width": 124,
+        "row_height": 52, "font_size": 12.5, "min_width": 1040,
     },
 }
 
@@ -175,6 +178,16 @@ def validate_number(value: object, path: str) -> None:
         raise SpecError(f"{path} must be false, a string, or a number")
 
 
+def count_message_events(events: list) -> int:
+    count = 0
+    for event in events:
+        if event.get("kind", "call") == "fragment":
+            count += sum(count_message_events(branch["events"]) for branch in event["branches"])
+        elif event.get("kind", "call") in MESSAGE_KINDS:
+            count += 1
+    return count
+
+
 def validate_events(
     events: object,
     path: str,
@@ -288,6 +301,10 @@ def validate(spec: object) -> None:
         raise SpecError("participant ids must be unique")
 
     phases = require_list(spec.get("phases"), "phases", nonempty=True)
+    layout = require_object(spec.get("layout", {}), "layout")
+    allow_tall = layout.get("allow_tall", False)
+    if not isinstance(allow_tall, bool):
+        raise SpecError("layout.allow_tall must be boolean")
     known = set(ids)
     event_ids: set[str] = set()
     event_order: dict[str, int] = {}
@@ -300,6 +317,20 @@ def validate(spec: object) -> None:
         validate_events(
             phase.get("events"), f"{path}.events", known, event_ids,
             event_order, order_counter, contains_cjk(spec["title"]),
+        )
+
+    phase_message_counts = [count_message_events(phase["events"]) for phase in phases]
+    total_messages = sum(phase_message_counts)
+    if not allow_tall and (
+        total_messages > MAX_MESSAGES_PER_DIAGRAM
+        or any(count > MAX_MESSAGES_PER_PHASE for count in phase_message_counts)
+    ):
+        busiest_phase = max(phase_message_counts, default=0)
+        raise SpecError(
+            "readability budget exceeded "
+            f"({total_messages} messages total; busiest phase has {busiest_phase}); "
+            "split the flow into one overview and focused detail diagrams, or set "
+            "layout.allow_tall=true only when a single audit diagram is explicitly required"
         )
 
     activations = require_list(spec.get("activations", []), "activations")
@@ -327,7 +358,6 @@ def validate(spec: object) -> None:
         require_text(item.get("term"), f"{path}.term")
         require_text(item.get("text"), f"{path}.text")
 
-    layout = require_object(spec.get("layout", {}), "layout")
     preset = layout.get("preset", "web")
     if preset not in PRESETS:
         raise SpecError(f"layout.preset must be one of {sorted(PRESETS)}")
@@ -364,6 +394,7 @@ def text_svg(
     anchor: str = "middle",
     weight: int = 400,
     line_height: float | None = None,
+    data_role: str | None = None,
 ) -> str:
     line_height = line_height or size * 1.32
     first_y = y - (len(lines) - 1) * line_height / 2
@@ -371,11 +402,35 @@ def text_svg(
         f'x="{x:.1f}" y="{first_y:.1f}" text-anchor="{anchor}" '
         f'font-size="{size}" font-weight="{weight}" fill="{esc(fill)}"'
     )
+    if data_role:
+        attrs += f' data-role="{esc(data_role)}"'
     tspans = [
         f'<tspan x="{x:.1f}" dy="{"0" if index == 0 else f"{line_height:.1f}"}">{esc(line)}</tspan>'
         for index, line in enumerate(lines)
     ]
     return f"<text {attrs}>{''.join(tspans)}</text>"
+
+
+def participant_lines(participant: dict, width: float) -> tuple[list[str], list[str]]:
+    label = str(participant["label"])
+    subtitle = str(participant.get("subtitle", "")).strip()
+    label_units = max(8, int(width / 7.5))
+    subtitle_units = max(8, int(width / 6.8))
+    return (
+        wrap_text(label, label_units),
+        wrap_text(f"({subtitle})", subtitle_units) if subtitle else [],
+    )
+
+
+def participant_card_height(participants: list[dict], width: float) -> float:
+    heights: list[float] = []
+    for participant in participants:
+        label_lines, subtitle_lines = participant_lines(participant, width)
+        if participant.get("kind") == "actor":
+            heights.append(max(70, 52 + len(label_lines) * 15))
+        else:
+            heights.append(max(70, 24 + len(label_lines) * 15 + len(subtitle_lines) * 13))
+    return max(heights, default=70)
 
 
 def participant_card(
@@ -393,8 +448,7 @@ def participant_card(
         f'<rect x="{x - width / 2:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height:.1f}" '
         f'rx="7" fill="{esc(fill)}" stroke="{esc(border)}"/>'
     ]
-    label = str(participant["label"])
-    subtitle = str(participant.get("subtitle", "")).strip()
+    label_lines, subtitle_lines = participant_lines(participant, width)
     if participant.get("kind") == "actor":
         cx, cy = x, y + 17
         parts.extend([
@@ -402,13 +456,18 @@ def participant_card(
             f'<path d="M {cx:.1f} {cy + 5:.1f} V {cy + 17:.1f} M {cx - 8:.1f} {cy + 10:.1f} H {cx + 8:.1f} '
             f'M {cx:.1f} {cy + 17:.1f} L {cx - 7:.1f} {cy + 25:.1f} M {cx:.1f} {cy + 17:.1f} L {cx + 7:.1f} {cy + 25:.1f}" '
             f'fill="none" stroke="{esc(text_color)}" stroke-width="1.2" stroke-linecap="round"/>',
-            text_svg(x, y + height - 11, wrap_text(label, max(8, int(width / 7)), 1), size=12.5, fill=text_color, weight=600),
+            text_svg(
+                x, y + height - 12 - (len(label_lines) - 1) * 7.5,
+                label_lines, size=12.8, fill=text_color, weight=700, line_height=15,
+            ),
         ])
     else:
-        label_lines = wrap_text(label, max(8, int(width / 7.5)), 2)
-        parts.append(text_svg(x, y + height / 2 - (7 if subtitle else 0), label_lines, size=12.5, fill=text_color, weight=600, line_height=15))
-        if subtitle:
-            parts.append(text_svg(x, y + height - 12, wrap_text(f"({subtitle})", max(8, int(width / 6.8)), 1), size=10.5, fill=muted))
+        subtitle_block = len(subtitle_lines) * 13
+        label_y = y + height / 2 - (subtitle_block + (5 if subtitle_lines else 0)) / 2
+        parts.append(text_svg(x, label_y, label_lines, size=12.8, fill=text_color, weight=700, line_height=15))
+        if subtitle_lines:
+            subtitle_y = y + height / 2 + (len(label_lines) * 15 + 5) / 2
+            parts.append(text_svg(x, subtitle_y, subtitle_lines, size=10.5, fill=muted, line_height=13))
     return "".join(parts)
 
 
@@ -418,6 +477,9 @@ def layout_events(
     row_height: float,
     event_y: dict[str, float],
     counter: list[int],
+    xs: dict[str, float],
+    spacing: float,
+    font_size: float,
 ) -> tuple[list[dict], float]:
     nodes: list[dict] = []
     for event in events:
@@ -429,7 +491,10 @@ def layout_events(
             for branch in event["branches"]:
                 branch_top = cursor
                 cursor += 24
-                children, cursor = layout_events(branch["events"], cursor, row_height, event_y, counter)
+                children, cursor = layout_events(
+                    branch["events"], cursor, row_height, event_y, counter,
+                    xs, spacing, font_size,
+                )
                 cursor += 10
                 branches.append({"branch": branch, "top": branch_top, "bottom": cursor, "nodes": children})
             bottom = cursor + 8
@@ -437,11 +502,11 @@ def layout_events(
             y = bottom + 12
             continue
 
-        height = row_height + (10 if kind == "note" else 0)
-        if kind in MESSAGE_KINDS and (event.get("method") or event.get("technical")):
-            height += 10
-        center = y + height / 2
         number: str | None = None
+        label_lines: list[str] = []
+        method_lines: list[str] = []
+        state_lines: list[str] = []
+        label_width = 0.0
         if kind in MESSAGE_KINDS:
             supplied = event.get("number")
             if supplied is False:
@@ -451,9 +516,42 @@ def layout_events(
             else:
                 counter[0] += 1
                 number = str(counter[0])
+            source, target = str(event["from"]), str(event["to"])
+            if source == target:
+                loop_width = min(60, spacing * 0.34)
+                label_width = loop_width + 90
+            else:
+                label_width = max(130, abs(xs[target] - xs[source]) - 18)
+            label = str(event["label"])
+            if number:
+                label = f"{number}. {label}"
+            label_lines = wrap_text(label, max(14, int(label_width / (font_size * 0.53))))
+            method_text = str(event.get("method") or event.get("technical") or "").strip()
+            if method_text:
+                method_lines = wrap_text(method_text, max(14, int(label_width / 6.0)))
+            state = str(event.get("state", "")).strip()
+            if state:
+                state_lines = wrap_text(state, max(14, int(label_width / 7)))
             if event.get("id"):
-                event_y[str(event["id"])] = center
-        nodes.append({"event": event, "kind": kind, "top": y, "bottom": y + height, "center": center, "number": number})
+                event_y[str(event["id"])] = 0
+
+        if kind == "note":
+            height = row_height + 10
+        elif kind in MESSAGE_KINDS:
+            label_block = len(label_lines) * font_size * 1.25
+            detail_block = len(method_lines) * 13 + len(state_lines) * 14
+            height = max(row_height, 24 + label_block + detail_block)
+        else:
+            height = row_height
+        center = y + height / 2
+        if kind in MESSAGE_KINDS and event.get("id"):
+            event_y[str(event["id"])] = center
+        nodes.append({
+            "event": event, "kind": kind, "top": y, "bottom": y + height,
+            "center": center, "number": number, "label_lines": label_lines,
+            "method_lines": method_lines, "state_lines": state_lines,
+            "label_width": label_width,
+        })
         y += height
     return nodes, y
 
@@ -489,6 +587,18 @@ def event_color(event: dict, colors: dict[str, str]) -> str:
     if event.get("emphasis") == "warning":
         return colors["warning"]
     return colors["line"]
+
+
+def phase_label_parts(label: object, index: int, cjk: bool) -> tuple[str, str]:
+    source_lines = [line.strip() for line in str(label).splitlines() if line.strip()]
+    source = source_lines[0] if source_lines else ""
+    match = PHASE_PREFIX.match(source)
+    if match:
+        number = re.sub(r"\s+", "", match.group(1)) if contains_cjk(match.group(1)) else match.group(1)
+        name_parts = [match.group(2).strip(), *source_lines[1:]]
+        return number, " ".join(part for part in name_parts if part)
+    number = f"阶段{index + 1}" if cjk else f"Phase {index + 1}"
+    return number, " ".join(source_lines)
 
 
 def arrowhead_svg(
@@ -534,17 +644,19 @@ def render_fragment_frames(
         top, bottom = node["top"], node["bottom"]
         svg.append(
             f'<rect x="{left:.1f}" y="{top:.1f}" width="{right - left:.1f}" height="{bottom - top:.1f}" '
-            f'fill="#FFFFFF" fill-opacity="0.72" stroke="{esc(colors["border"])}" stroke-width="1.1"/>'
+            f'fill="#FFFFFF" fill-opacity="0.88" stroke="{esc(colors["border"])}" stroke-width="1.4"/>'
         )
         operator_text = event["operator"]
         if str(event.get("label", "")).strip():
             operator_text += f' · {event["label"]}'
-        tab_width = min(right - left - 20, max(70, 14 + display_width(operator_text) * 7))
+        tab_width = min(right - left - 20, max(76, 16 + display_width(operator_text) * 7.4))
+        tab_lines = wrap_text(operator_text, max(8, int(tab_width / 7.4)))
+        tab_height = 25 + max(0, len(tab_lines) - 1) * 15
         svg.append(
-            f'<path d="M {left:.1f} {top:.1f} H {left + tab_width:.1f} L {left + tab_width - 10:.1f} {top + 23:.1f} '
+            f'<path d="M {left:.1f} {top:.1f} H {left + tab_width:.1f} L {left + tab_width - 10:.1f} {top + tab_height:.1f} '
             f'H {left:.1f} Z" fill="#F3F4F5" stroke="{esc(colors["border"])}" stroke-width="1"/>'
         )
-        svg.append(text_svg(left + 9, top + 16, wrap_text(operator_text, max(8, int(tab_width / 7)), 1), size=11.5, fill=colors["text"], anchor="start", weight=700))
+        svg.append(text_svg(left + 9, top + 17 + (len(tab_lines) - 1) * 7.5, tab_lines, size=12.5, fill=colors["text"], anchor="start", weight=700, line_height=15))
         for index, branch in enumerate(node["branches"]):
             if index > 0:
                 svg.append(
@@ -554,7 +666,7 @@ def render_fragment_frames(
             condition = str(branch["branch"].get("condition", "")).strip()
             if condition:
                 condition_text = condition if condition.startswith("[") else f"[{condition}]"
-                svg.append(text_svg(left + 9, branch["top"] + 16, wrap_text(condition_text, max(16, int((right - left - 18) / 7)), 1), size=11, fill=colors["muted"], anchor="start", weight=600))
+                svg.append(text_svg(left + 9, branch["top"] + 16, wrap_text(condition_text, max(16, int((right - left - 18) / 7))), size=12, fill=colors["text"], anchor="start", weight=600, line_height=15))
             svg.extend(render_fragment_frames(branch["nodes"], xs, card_width, phase_width, width, colors))
     return svg
 
@@ -598,15 +710,11 @@ def render_event_nodes(
         color = event_color(event, colors)
         kind = node["kind"]
         dash = ' stroke-dasharray="6 4"' if kind == "return" else ""
-        label = str(event["label"])
         step = event.get("id", node["number"] or "")
         arrow_meta = (
             f'data-role="step-arrow" data-step="{esc(step)}" '
             f'data-from="{esc(source)}" data-to="{esc(target)}"'
         )
-        if node["number"]:
-            label = f'{node["number"]}. {label}'
-
         if source == target:
             loop_width = min(60, spacing * 0.34)
             path = f"M {x1:.1f} {center:.1f} h {loop_width:.1f} v 27 h {-loop_width:.1f}"
@@ -615,7 +723,7 @@ def render_event_nodes(
                 f'stroke-linejoin="round"/>'
             )
             svg.append(arrowhead_svg(x1, center + 27, -1, color, source, target, step))
-            label_x, label_width, label_y = x1 + loop_width / 2, loop_width + 90, center - 13
+            label_x = x1 + loop_width / 2
         else:
             direction = 1 if x2 > x1 else -1
             start, end = x1, x2
@@ -624,19 +732,18 @@ def render_event_nodes(
                 f'stroke="{esc(color)}" stroke-width="2"{dash}/>'
             )
             svg.append(arrowhead_svg(end, center, direction, color, source, target, step))
-            label_x, label_width, label_y = (x1 + x2) / 2, max(130, abs(x2 - x1) - 18), center - 13
-        method_text = str(event.get("method") or event.get("technical") or "").strip()
-        if method_text:
-            label_y -= 7
-        label_lines = wrap_text(label, max(14, int(label_width / (font_size * 0.53))), 2)
+            label_x = (x1 + x2) / 2
+        label_lines = node["label_lines"]
+        method_lines = node["method_lines"]
+        state_lines = node["state_lines"]
+        label_line_height = font_size * 1.25
+        label_y = center - 12 - (len(label_lines) - 1) * label_line_height / 2
         svg.append(text_svg(label_x, label_y, label_lines, size=font_size, fill=color, weight=500, line_height=font_size * 1.25))
-        if method_text:
-            method_lines = wrap_text(method_text, max(14, int(label_width / 6.4)), 2)
+        if method_lines:
             svg.append(text_svg(label_x, center + 16, method_lines, size=10.5, fill=colors["muted"], weight=400, line_height=13))
-        state = str(event.get("state", "")).strip()
-        if state:
-            state_y = center + (34 if method_text else 18)
-            svg.append(text_svg(label_x, state_y, wrap_text(state, max(14, int(label_width / 7)), 1), size=11.5, fill=colors["state"], weight=600))
+        if state_lines:
+            state_y = center + (34 if method_lines else 18) + max(0, len(method_lines) - 1) * 13
+            svg.append(text_svg(label_x, state_y, state_lines, size=11.5, fill=colors["state"], weight=600, line_height=14))
     return svg
 
 
@@ -662,7 +769,7 @@ def render(spec: dict, preset_override: str | None = None) -> tuple[str, int, in
         "muted": theme.get("muted", "#62676E"),
         "line": theme.get("line", "#202326"),
         "lifeline": theme.get("lifeline", "#A7ADB4"),
-        "border": theme.get("border", "#AAB0B6"),
+        "border": theme.get("border", "#9299A1"),
         "state": theme.get("state", "#D94242"),
         "warning": theme.get("warning", "#B87510"),
         "background": theme.get("background", "#FFFFFF"),
@@ -672,7 +779,7 @@ def render(spec: dict, preset_override: str | None = None) -> tuple[str, int, in
     font_family = theme.get("font_family", "Inter, Noto Sans SC, PingFang SC, Microsoft YaHei, Arial, sans-serif")
 
     participants = spec["participants"]
-    first_x = phase_width + 30 + card_width / 2
+    first_x = phase_width + 10 + card_width / 2
     xs = {participant["id"]: first_x + index * spacing for index, participant in enumerate(participants)}
     natural_width = int(first_x + (len(participants) - 1) * spacing + card_width / 2 + 40)
     width = max(min_width, natural_width)
@@ -683,9 +790,10 @@ def render(spec: dict, preset_override: str | None = None) -> tuple[str, int, in
             for index, participant in enumerate(participants)
         }
 
-    title_lines = wrap_text(spec["title"], max(36, int((width - 80) / 9)), 2)
+    title_lines = wrap_text(spec["title"], max(36, int((width - 80) / 9)))
     title_center_y = 24 + (len(title_lines) - 1) * 12
-    card_y, card_height = 22 + len(title_lines) * 24 + 18, 66
+    card_y = 22 + len(title_lines) * 24 + 18
+    card_height = participant_card_height(participants, card_width)
     timeline_top = card_y + card_height + 18
     y = timeline_top
     event_y: dict[str, float] = {}
@@ -694,7 +802,10 @@ def render(spec: dict, preset_override: str | None = None) -> tuple[str, int, in
     for phase in spec["phases"]:
         phase_top = y
         y += 30
-        nodes, y = layout_events(phase["events"], y, row_height, event_y, counter)
+        nodes, y = layout_events(
+            phase["events"], y, row_height, event_y, counter,
+            xs, spacing, font_size,
+        )
         y += 18
         phase_layouts.append({"phase": phase, "top": phase_top, "bottom": y, "nodes": nodes})
     timeline_bottom = y
@@ -738,13 +849,22 @@ def render(spec: dict, preset_override: str | None = None) -> tuple[str, int, in
                 f'stroke="{esc(colors["lifeline"])}" stroke-width="1" stroke-dasharray="2 4"/>'
             )
         fill = phase.get("color", DEFAULT_PHASE_COLORS[index % len(DEFAULT_PHASE_COLORS)])
-        box_y, box_h = top + 15, min(76, max(52, bottom - top - 30))
+        phase_number, phase_name = phase_label_parts(phase["label"], index, contains_cjk(spec["title"]))
+        phase_name_lines = wrap_text(phase_name, max(8, int((phase_width - 34) / 7))) if phase_name else []
+        desired_box_h = 38 + len(phase_name_lines) * 17
+        box_y = top + 12
+        box_h = max(62, min(92, desired_box_h, bottom - top - 22))
         svg.append(
-            f'<rect x="16" y="{box_y:.1f}" width="{phase_width - 28:.1f}" height="{box_h:.1f}" '
-            f'fill="{esc(fill)}" stroke="{esc(colors["border"])}"/>'
+            f'<rect data-role="phase-card" x="12" y="{box_y:.1f}" width="{phase_width - 20:.1f}" height="{box_h:.1f}" '
+            f'fill="{esc(fill)}" stroke="{esc(colors["border"])}" stroke-width="1.2"/>'
         )
-        phase_lines = wrap_text(phase["label"], max(8, int((phase_width - 40) / 7)), 4)
-        svg.append(text_svg(16 + (phase_width - 28) / 2, box_y + box_h / 2, phase_lines, size=12.5, fill=colors["text"], weight=600, line_height=17))
+        phase_center_x = 12 + (phase_width - 20) / 2
+        if phase_name_lines:
+            svg.append(text_svg(phase_center_x, box_y + 20, [phase_number], size=12.5, fill=colors["text"], weight=700, data_role="phase-number"))
+            phase_name_y = box_y + 43 + (len(phase_name_lines) - 1) * 8.5
+            svg.append(text_svg(phase_center_x, phase_name_y, phase_name_lines, size=13.2, fill=colors["text"], weight=700, line_height=17, data_role="phase-name"))
+        else:
+            svg.append(text_svg(phase_center_x, box_y + box_h / 2, [phase_number], size=13.2, fill=colors["text"], weight=700, data_role="phase-number"))
         svg.extend(render_fragment_frames(phase_layout["nodes"], xs, card_width, phase_width, width, colors))
 
     for activation in spec.get("activations", []):

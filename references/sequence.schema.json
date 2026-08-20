@@ -170,7 +170,8 @@
         "row_height": {"type": "number", "minimum": 44, "maximum": 140},
         "font_size": {"type": "number", "minimum": 11, "maximum": 22},
         "min_width": {"type": "number", "minimum": 640, "maximum": 10000},
-        "show_bottom_participants": {"type": "boolean"}
+        "show_bottom_participants": {"type": "boolean"},
+        "allow_tall": {"type": "boolean"}
       }
     },
     "theme": {
