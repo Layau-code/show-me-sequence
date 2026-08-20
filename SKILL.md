@@ -1,9 +1,9 @@
 ---
-name: render-clean-sequence-diagram
+name: show-me-sequence
 description: Convert any business workflow, system interaction, API call chain, event flow, fulfillment process, approval process, or incident timeline into a crisp, minimal, phased UML-style sequence diagram where every step has a clear directional arrow, the business action is readable in the user's language, and the optional core method name appears beneath it. Use when Codex needs to create, redraw, standardize, validate, or update a sequence diagram and deliver editable SVG or high-resolution PNG, especially from prose, requirements, tickets, tables, screenshots, Mermaid, PlantUML, or an existing diagram.
 ---
 
-# Render Clean Sequence Diagram
+# Show Me Sequence
 
 Create a business-readable sequence diagram with deterministic layout. Keep semantics in JSON and render with the bundled script; never hand-draw the final SVG.
 

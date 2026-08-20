@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.local/render-clean-sequence-diagram/sequence.schema.json",
+  "$id": "https://example.local/show-me-sequence/sequence.schema.json",
   "title": "Clean UML sequence diagram specification",
   "type": "object",
   "required": ["title", "participants", "phases"],

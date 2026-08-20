@@ -11,11 +11,17 @@
 - 自动整理阶段、分支、循环和参与者布局
 - 支持输出 SVG 和高清 PNG
 
+## 参考效果
+
+![Agent FC 时序图](docs/images/agent-fc-sequence.png)
+
+![退货全流程时序图](docs/images/refund-sequence.png)
+
 ## 安装
 
 ```bash
 git clone https://github.com/Layau-code/show-me-sequence.git \
-  ~/.codex/skills/render-clean-sequence-diagram
+  ~/.codex/skills/show-me-sequence
 ```
 
 重启 Codex 后即可使用。
@@ -25,7 +31,7 @@ git clone https://github.com/Layau-code/show-me-sequence.git \
 直接告诉 Codex：
 
 ```text
-使用 render-clean-sequence-diagram，把下面的业务流程生成 UML 时序图：
+使用 $show-me-sequence，把下面的业务流程生成 UML 时序图：
 用户提交订单，订单服务创建订单，库存服务锁定库存，支付服务完成扣款。
 ```
 
