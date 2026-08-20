@@ -1,0 +1,4 @@
+interface:
+  display_name: "清晰 UML 时序图"
+  short_description: "生成箭头清晰、上方中文步骤、下方英文方法的业务时序图"
+  default_prompt: "使用 $render-clean-sequence-diagram 制作每个步骤都以实心箭头明确指向下一参与方、箭头上方写中文业务步骤名、下方写英文核心方法名的 UML 时序图。"

@@ -1,0 +1,88 @@
+{
+  "title": "线上问诊预约与处方流转（完整业务时序图）",
+  "description": "展示阶段、循环、分支、状态、注释与激活条的跨业务建模方式",
+  "participants": [
+    {"id": "patient", "label": "患者", "kind": "actor", "color": "#F5F6F7"},
+    {"id": "app", "label": "患者端", "subtitle": "Patient App", "color": "#EAF2FB"},
+    {"id": "booking", "label": "预约服务", "subtitle": "BookingService", "color": "#EEF6ED"},
+    {"id": "doctor", "label": "医生工作台", "color": "#F4F0F8"},
+    {"id": "rx", "label": "处方服务", "subtitle": "PrescriptionService", "color": "#FFF3E6"},
+    {"id": "pharmacy", "label": "药房", "color": "#FFF8D9"}
+  ],
+  "phases": [
+    {
+      "label": "阶段1\n提交预约",
+      "color": "#EAF2FB",
+      "events": [
+        {"id": "m1", "from": "patient", "to": "app", "label": "选择医生与时间"},
+        {"id": "m2", "from": "app", "to": "booking", "label": "创建预约", "method": "BookingService.create()"},
+        {"id": "m3", "from": "booking", "to": "app", "label": "预约已确认", "kind": "return", "state": "BOOKING_CONFIRMED"}
+      ]
+    },
+    {
+      "label": "阶段2\n问诊与开方",
+      "color": "#EEF6ED",
+      "events": [
+        {"id": "m4", "from": "booking", "to": "doctor", "label": "推送待问诊任务", "kind": "async"},
+        {"kind": "note", "over": ["booking", "doctor"], "text": "医生接诊后进入音视频问诊"},
+        {
+          "kind": "fragment",
+          "operator": "loop",
+          "label": "资料补充，最多 2 次",
+          "over": ["patient", "app", "doctor"],
+          "branches": [
+            {
+              "condition": "病情资料不完整",
+              "events": [
+                {"from": "doctor", "to": "app", "label": "请求补充病情资料", "kind": "async", "number": false},
+                {"from": "app", "to": "patient", "label": "通知补充资料", "kind": "async", "number": false},
+                {"from": "patient", "to": "doctor", "label": "提交补充资料", "number": false}
+              ]
+            }
+          ]
+        },
+        {"id": "m5", "from": "doctor", "to": "rx", "label": "提交电子处方", "method": "PrescriptionService.submit()"},
+        {"id": "m6", "from": "rx", "to": "doctor", "label": "处方审核通过", "kind": "return", "state": "PRESCRIPTION_APPROVED"}
+      ]
+    },
+    {
+      "label": "阶段3\n配药与通知",
+      "color": "#FFF4D8",
+      "events": [
+        {"id": "m7", "from": "rx", "to": "pharmacy", "label": "下发处方", "kind": "async"},
+        {
+          "kind": "fragment",
+          "operator": "alt",
+          "label": "库存检查结果",
+          "over": ["app", "rx", "pharmacy"],
+          "branches": [
+            {
+              "condition": "库存充足",
+              "events": [
+                {"id": "m8a", "from": "pharmacy", "to": "rx", "label": "确认备药完成", "kind": "return", "number": "8a"},
+                {"id": "m9a", "from": "rx", "to": "app", "label": "通知患者取药", "kind": "async", "number": "9a", "state": "READY_FOR_PICKUP"}
+              ]
+            },
+            {
+              "condition": "库存不足",
+              "events": [
+                {"id": "m8b", "from": "pharmacy", "to": "rx", "label": "返回缺货结果", "kind": "return", "number": "8b", "emphasis": "warning"},
+                {"id": "m9b", "from": "rx", "to": "app", "label": "通知重新选药房", "kind": "async", "number": "9b", "state": "PHARMACY_RESELECT_REQUIRED"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "legend": [
+    {"term": "BOOKING_CONFIRMED", "text": "号源已锁定，预约成功"},
+    {"term": "PRESCRIPTION_APPROVED", "text": "处方审核通过，可进入配药"},
+    {"term": "READY_FOR_PICKUP", "text": "药品已备妥，等待患者领取"},
+    {"term": "PHARMACY_RESELECT_REQUIRED", "text": "当前药房缺货，需要重新选择"}
+  ],
+  "layout": {
+    "preset": "web",
+    "participant_spacing": 178
+  }
+}

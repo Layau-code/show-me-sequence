@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/render-clean-sequence-diagram/sequence.schema.json",
+  "title": "Clean UML sequence diagram specification",
+  "type": "object",
+  "required": ["title", "participants", "phases"],
+  "properties": {
+    "title": {"type": "string", "minLength": 1},
+    "description": {"type": "string"},
+    "participants": {
+      "type": "array",
+      "minItems": 2,
+      "items": {"$ref": "#/$defs/participant"}
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/phase"}
+    },
+    "activations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/activation"}
+    },
+    "legend": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/legendItem"}
+    },
+    "labels": {
+      "type": "object",
+      "properties": {"legend": {"type": "string"}}
+    },
+    "layout": {"$ref": "#/$defs/layout"},
+    "theme": {"$ref": "#/$defs/theme"}
+  },
+  "$defs": {
+    "color": {"type": "string", "pattern": "^#[0-9A-Fa-f]{6}$"},
+    "participantId": {"type": "string", "minLength": 1},
+    "participant": {
+      "type": "object",
+      "required": ["id", "label"],
+      "properties": {
+        "id": {"$ref": "#/$defs/participantId"},
+        "label": {"type": "string", "minLength": 1},
+        "subtitle": {"type": "string"},
+        "kind": {"enum": ["actor", "system"]},
+        "color": {"$ref": "#/$defs/color"}
+      }
+    },
+    "phase": {
+      "type": "object",
+      "required": ["label", "events"],
+      "properties": {
+        "label": {"type": "string", "minLength": 1},
+        "color": {"$ref": "#/$defs/color"},
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/event"}
+        }
+      }
+    },
+    "message": {
+      "type": "object",
+      "required": ["from", "to", "label"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "from": {"$ref": "#/$defs/participantId"},
+        "to": {"$ref": "#/$defs/participantId"},
+        "label": {"type": "string", "minLength": 1},
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "pattern": "^[A-Za-z_$][A-Za-z0-9_$-]*(?:(?:\\.|::|/|#)[A-Za-z_$][A-Za-z0-9_$-]*)*(?:\\([^()\\n]{0,80}\\))?$"
+        },
+        "technical": {"type": "string", "minLength": 1},
+        "kind": {"enum": ["call", "return", "async", "self"]},
+        "state": {"type": "string"},
+        "number": {
+          "oneOf": [
+            {"const": false},
+            {"type": "string"},
+            {"type": "number"}
+          ]
+        },
+        "color": {"$ref": "#/$defs/color"},
+        "emphasis": {"enum": ["state", "error", "warning"]}
+      },
+      "not": {"required": ["method", "technical"]}
+    },
+    "note": {
+      "type": "object",
+      "required": ["kind", "over", "text"],
+      "properties": {
+        "kind": {"const": "note"},
+        "over": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/participantId"}
+        },
+        "text": {"type": "string", "minLength": 1},
+        "color": {"$ref": "#/$defs/color"}
+      }
+    },
+    "fragment": {
+      "type": "object",
+      "required": ["kind", "operator", "branches"],
+      "properties": {
+        "kind": {"const": "fragment"},
+        "operator": {"enum": ["alt", "opt", "loop", "par", "break"]},
+        "label": {"type": "string"},
+        "over": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/participantId"}
+        },
+        "branches": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/branch"}
+        }
+      }
+    },
+    "branch": {
+      "type": "object",
+      "required": ["events"],
+      "properties": {
+        "condition": {"type": "string"},
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/event"}
+        }
+      }
+    },
+    "event": {
+      "oneOf": [
+        {"$ref": "#/$defs/note"},
+        {"$ref": "#/$defs/fragment"},
+        {"$ref": "#/$defs/message"}
+      ]
+    },
+    "activation": {
+      "type": "object",
+      "required": ["participant", "from", "to"],
+      "properties": {
+        "participant": {"$ref": "#/$defs/participantId"},
+        "from": {"type": "string", "minLength": 1},
+        "to": {"type": "string", "minLength": 1}
+      }
+    },
+    "legendItem": {
+      "type": "object",
+      "required": ["term", "text"],
+      "properties": {
+        "term": {"type": "string", "minLength": 1},
+        "text": {"type": "string", "minLength": 1}
+      }
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "preset": {"enum": ["web", "presentation", "document"]},
+        "participant_spacing": {"type": "number", "minimum": 120, "maximum": 400},
+        "participant_width": {"type": "number", "minimum": 90, "maximum": 260},
+        "phase_rail_width": {"type": "number", "minimum": 90, "maximum": 240},
+        "row_height": {"type": "number", "minimum": 44, "maximum": 140},
+        "font_size": {"type": "number", "minimum": 11, "maximum": 22},
+        "min_width": {"type": "number", "minimum": 640, "maximum": 10000},
+        "show_bottom_participants": {"type": "boolean"}
+      }
+    },
+    "theme": {
+      "type": "object",
+      "properties": {
+        "text": {"$ref": "#/$defs/color"},
+        "muted": {"$ref": "#/$defs/color"},
+        "line": {"$ref": "#/$defs/color"},
+        "lifeline": {"$ref": "#/$defs/color"},
+        "border": {"$ref": "#/$defs/color"},
+        "state": {"$ref": "#/$defs/color"},
+        "warning": {"$ref": "#/$defs/color"},
+        "background": {"$ref": "#/$defs/color"},
+        "note": {"$ref": "#/$defs/color"},
+        "activation": {"$ref": "#/$defs/color"},
+        "font_family": {"type": "string"}
+      }
+    }
+  }
+}
